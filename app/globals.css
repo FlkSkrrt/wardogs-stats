@@ -1,0 +1,189 @@
+'use client';
+
+import { useState } from 'react';
+
+const demoSteamId = '76561198000000000';
+
+export default function WardogsDashboard() {
+  const [steamId, setSteamId] = useState(demoSteamId);
+  const [token, setToken] = useState('demo-token-wardogs');
+  const [isLoading, setIsLoading] = useState(false);
+  const [session, setSession] = useState<{ playerName: string; steamId: string; token: string } | null>(null);
+  const [stats, setStats] = useState<any>(null);
+
+  const authenticate = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/auth/steam', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ steamId, token }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Authentication failed');
+      }
+
+      setSession({ playerName: data.playerName, steamId: data.steamId, token: data.token });
+      const statsResponse = await fetch(`/api/stats?steamId=${encodeURIComponent(steamId)}`);
+      const statsData = await statsResponse.json();
+      setStats(statsData);
+    } catch (error) {
+      console.error(error);
+      alert(error instanceof Error ? error.message : 'Unable to authenticate');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <main className="shell">
+      <section className="hero">
+        <div className="brand-row">
+          <div className="brand-mark">W</div>
+          <div>
+            <p className="eyebrow">WARDOGS</p>
+            <h1>Combat intelligence for every community server.</h1>
+          </div>
+        </div>
+
+        <div className="hero-grid">
+          <div className="hero-copy">
+            <p>
+              Link your Steam account, authenticate with your token, and track your historical combat stats across any WARDOGS community server.
+            </p>
+            <div className="cta-row">
+              <button className="primary" onClick={authenticate} disabled={isLoading}>
+                {isLoading ? 'Syncing...' : 'Link Steam account'}
+              </button>
+              <button className="secondary">View demo stats</button>
+            </div>
+            <ul className="feature-list">
+              <li>Cross-server historical combat tracking</li>
+              <li>Steam-linked identity verification</li>
+              <li>Token-based authentication flow</li>
+            </ul>
+          </div>
+
+          <div className="auth-card">
+            <label>
+              Steam ID
+              <input value={steamId} onChange={(event) => setSteamId(event.target.value)} />
+            </label>
+            <label>
+              Auth token
+              <input value={token} onChange={(event) => setToken(event.target.value)} />
+            </label>
+            <div className="service-row">
+              <span>Steam</span>
+              <span>WARDOGS Auth</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="stats-grid">
+        <StatCard label="Total matches" value={stats?.totals?.matches ?? '0'} tone="blue" />
+        <StatCard label="Wins" value={stats?.totals?.wins ?? '0'} tone="green" />
+        <StatCard label="KD ratio" value={stats?.totals?.kd ?? '0.00'} tone="orange" />
+        <StatCard label="Avg damage" value={stats?.totals?.avgDamage ?? '0'} tone="purple" />
+      </section>
+
+      {session && stats && (
+        <section className="dashboard">
+          <div className="panel">
+            <div className="panel-header">
+              <h2>Player overview</h2>
+              <span className="status good">Authenticated</span>
+            </div>
+
+            <div className="profile-card">
+              <div>
+                <p className="muted">Player</p>
+                <h3>{session.playerName}</h3>
+              </div>
+              <div>
+                <p className="muted">Steam ID</p>
+                <strong>{session.steamId}</strong>
+              </div>
+              <div>
+                <p className="muted">Connected token</p>
+                <strong>{session.token}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-header">
+              <h2>Community leaderboard</h2>
+              <span className="status">Last 30 days</span>
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Player</th>
+                  <th>Server</th>
+                  <th>KD</th>
+                  <th>Wins</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.leaderboard.map((entry: any) => (
+                  <tr key={entry.rank}>
+                    <td>#{entry.rank}</td>
+                    <td>{entry.player}</td>
+                    <td>{entry.server}</td>
+                    <td>{entry.kd}</td>
+                    <td>{entry.wins}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="panel wide">
+            <div className="panel-header">
+              <h2>Recent combat history</h2>
+              <span className="status">Across all servers</span>
+            </div>
+
+            <div className="match-list">
+              {stats.recentMatches.map((match: any) => (
+                <div key={match.id} className="match-item">
+                  <div>
+                    <p className="muted">{match.server}</p>
+                    <h4>{match.map}</h4>
+                  </div>
+                  <div>
+                    <p className="muted">Result</p>
+                    <strong className={match.result === 'Victory' ? 'win' : 'loss'}>{match.result}</strong>
+                  </div>
+                  <div>
+                    <p className="muted">K/D</p>
+                    <strong>{match.kd}</strong>
+                  </div>
+                  <div>
+                    <p className="muted">Damage</p>
+                    <strong>{match.damage}</strong>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+    </main>
+  );
+}
+
+function StatCard({ label, value, tone }: { label: string; value: string; tone: 'blue' | 'green' | 'orange' | 'purple' }) {
+  return (
+    <div className={`stat-card ${tone}`}>
+      <p>{label}</p>
+      <strong>{value}</strong>
+    </div>
+  );
+}
