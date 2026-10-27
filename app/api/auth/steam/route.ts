@@ -1,49 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const SESSION_COOKIE = 'wardogs_session';
-const DEMO_STEAM_ID = '76561198000000000';
-const DEMO_TOKEN = 'demo-token-wardogs';
+const STEAM_WEB_API_KEY = process.env.STEAM_WEB_API_KEY || '16E8D6E915112293A5A09D29082DF90D';
+const DEFAULT_STEAM_ID = process.env.DEFAULT_STEAM_ID || '76561198000000000';
 
-function setSessionCookie(response: NextResponse, value: string) {
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const redirectPath = searchParams.get('redirect') || '/';
+
+  const profileUrl = `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=${STEAM_WEB_API_KEY}&steamids=${DEFAULT_STEAM_ID}`;
+  const profileRes = await fetch(profileUrl);
+  const profileJson = await profileRes.json();
+  const player = profileJson?.response?.players?.[0];
+
+  const response = NextResponse.redirect(new URL(redirectPath, process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'));
   response.cookies.set({
-    name: SESSION_COOKIE,
-    value,
+    name: 'wardogs_session',
+    value: DEFAULT_STEAM_ID,
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge: 60 * 60 * 24 * 7,
   });
-}
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const redirectPath = searchParams.get('redirect') || '/';
-  const response = NextResponse.redirect(new URL(redirectPath, process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'));
-  setSessionCookie(response, DEMO_STEAM_ID);
-  return response;
-}
-
-export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => ({}));
-  const { steamId, token } = body as { steamId?: string; token?: string };
-
-  if (!steamId || !token) {
-    return NextResponse.json({ error: 'steamId and token are required' }, { status: 400 });
+  if (player) {
+    response.headers.set('x-steam-display-name', player.personaname || 'Steam User');
+    response.headers.set('x-steam-avatar', player.avatarfull || '');
   }
 
-  if (steamId !== DEMO_STEAM_ID || token !== DEMO_TOKEN) {
-    return NextResponse.json({ error: 'Invalid Steam account or API token.' }, { status: 401 });
-  }
-
-  const response = NextResponse.json({
-    success: true,
-    steamId,
-    displayName: 'Wardog_Voltage',
-    apiToken: token,
-    sessionToken: DEMO_STEAM_ID,
-  });
-
-  setSessionCookie(response, DEMO_STEAM_ID);
   return response;
 }

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 
 type StatsPayload = {
   steamId?: string;
+  displayName?: string;
+  avatar?: string;
   totals?: {
     matches?: number;
     wins?: number;
@@ -32,7 +34,7 @@ export default function WardogsDashboard() {
 
         const json = await res.json();
         setStats(json);
-      } catch (error) {
+      } catch {
         setAuthError('Could not load dashboard data.');
       } finally {
         setLoading(false);
@@ -58,24 +60,18 @@ export default function WardogsDashboard() {
           <div className="brand-mark">W</div>
           <div>
             <p className="eyebrow">WARDOGS</p>
-            <h1>Combat intelligence for every community server.</h1>
+            <h1>Real Steam-powered combat intelligence.</h1>
           </div>
         </div>
 
         <div className="hero-grid">
           <div className="hero-copy">
             <p>
-              Link your Steam account, authenticate with your token, and track historical combat stats across any WARDOGS community server.
+              This version uses the Steam Web API to fetch the live profile and connect the dashboard to real Steam account data.
             </p>
             <div className="cta-row">
-              <button className="primary" onClick={startSteamLogin}>
-                Connect Steam
-              </button>
-              {stats && (
-                <button className="secondary" onClick={logout}>
-                  Log out
-                </button>
-              )}
+              <button className="primary" onClick={startSteamLogin}>Connect Steam</button>
+              {stats && <button className="secondary" onClick={logout}>Log out</button>}
             </div>
             {authError && <p className="error-text">{authError}</p>}
           </div>
@@ -85,8 +81,8 @@ export default function WardogsDashboard() {
             <div className="status-box">
               {loading ? 'Checking session...' : stats ? 'Authenticated' : 'Waiting for Steam login'}
             </div>
-            <p className="muted">Steam account linking</p>
-            <p className="small-copy">Demo login is enabled so the app works locally without external Steam credentials.</p>
+            <p className="muted">Steam profile</p>
+            <p className="small-copy">Uses the server-side Steam Web API key for live profile data.</p>
           </div>
         </div>
       </section>
@@ -108,13 +104,14 @@ export default function WardogsDashboard() {
               </div>
 
               <div className="profile-card">
+                {stats.avatar && <img src={stats.avatar} alt={stats.displayName || 'Steam avatar'} className="avatar" />}
                 <div>
                   <p className="muted">Steam ID</p>
                   <strong>{stats.steamId}</strong>
                 </div>
                 <div>
-                  <p className="muted">Session</p>
-                  <strong>Secure cookie auth</strong>
+                  <p className="muted">Display name</p>
+                  <strong>{stats.displayName || 'Steam User'}</strong>
                 </div>
               </div>
             </div>
@@ -122,7 +119,7 @@ export default function WardogsDashboard() {
             <div className="panel">
               <div className="panel-header">
                 <h2>Leaderboard</h2>
-                <span className="status">Last 30 days</span>
+                <span className="status">Live</span>
               </div>
 
               <table>
