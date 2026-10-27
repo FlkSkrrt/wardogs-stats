@@ -1,5 +1,195 @@
-import WardogsDashboard from '@/components/wardogs-dashboard';
+'use client';
 
-export default function HomePage() {
-  return <WardogsDashboard />;
+import { useEffect, useState } from 'react';
+
+type StatsPayload = {
+  steamId?: string;
+  totals?: {
+    matches?: number;
+    wins?: number;
+    losses?: number;
+    kd?: string;
+    avgDamage?: string;
+  };
+  leaderboard?: Array<{ rank: number; player: string; server: string; kd: string; wins: number }>;
+  recentMatches?: Array<{ id: string; server: string; map: string; result: string; kd: string; damage: string }>;
+};
+
+export default function WardogsDashboard() {
+  const [stats, setStats] = useState<StatsPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const res = await fetch('/api/stats', { cache: 'no-store' });
+        if (!res.ok) {
+          setAuthError('Not signed in. Use Steam auth to connect your account.');
+          setStats(null);
+          return;
+        }
+
+        const json = await res.json();
+        setStats(json);
+      } catch (error) {
+        setAuthError('Could not load dashboard data.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadStats();
+  }, []);
+
+  const startSteamLogin = () => {
+    window.location.href = '/api/auth/steam?redirect=/';
+  };
+
+  const logout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/';
+  };
+
+  return (
+    <main className="shell">
+      <section className="hero">
+        <div className="brand-row">
+          <div className="brand-mark">W</div>
+          <div>
+            <p className="eyebrow">WARDOGS</p>
+            <h1>Combat intelligence for every community server.</h1>
+          </div>
+        </div>
+
+        <div className="hero-grid">
+          <div className="hero-copy">
+            <p>
+              Link your Steam account, authenticate with your token, and track historical combat stats across any WARDOGS community server.
+            </p>
+            <div className="cta-row">
+              <button className="primary" onClick={startSteamLogin}>
+                Connect Steam
+              </button>
+              {stats && (
+                <button className="secondary" onClick={logout}>
+                  Log out
+                </button>
+              )}
+            </div>
+            {authError && <p className="error-text">{authError}</p>}
+          </div>
+
+          <div className="auth-card">
+            <h3>Account status</h3>
+            <div className="status-box">
+              {loading ? 'Checking session...' : stats ? 'Authenticated' : 'Waiting for Steam login'}
+            </div>
+            <p className="muted">Steam account linking</p>
+            <p className="small-copy">Demo login is enabled so the app works locally without external Steam credentials.</p>
+          </div>
+        </div>
+      </section>
+
+      {stats && (
+        <>
+          <section className="stats-grid">
+            <StatCard label="Total matches" value={String(stats.totals?.matches ?? 0)} tone="blue" />
+            <StatCard label="Wins" value={String(stats.totals?.wins ?? 0)} tone="green" />
+            <StatCard label="KD ratio" value={String(stats.totals?.kd ?? '0.00')} tone="orange" />
+            <StatCard label="Avg damage" value={String(stats.totals?.avgDamage ?? '0')} tone="purple" />
+          </section>
+
+          <section className="dashboard">
+            <div className="panel">
+              <div className="panel-header">
+                <h2>Profile</h2>
+                <span className="status good">Connected</span>
+              </div>
+
+              <div className="profile-card">
+                <div>
+                  <p className="muted">Steam ID</p>
+                  <strong>{stats.steamId}</strong>
+                </div>
+                <div>
+                  <p className="muted">Session</p>
+                  <strong>Secure cookie auth</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-header">
+                <h2>Leaderboard</h2>
+                <span className="status">Last 30 days</span>
+              </div>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Player</th>
+                    <th>Server</th>
+                    <th>KD</th>
+                    <th>Wins</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(stats.leaderboard ?? []).map((entry) => (
+                    <tr key={entry.rank}>
+                      <td>#{entry.rank}</td>
+                      <td>{entry.player}</td>
+                      <td>{entry.server}</td>
+                      <td>{entry.kd}</td>
+                      <td>{entry.wins}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="panel wide">
+              <div className="panel-header">
+                <h2>Recent combat history</h2>
+                <span className="status">Across servers</span>
+              </div>
+
+              <div className="match-list">
+                {(stats.recentMatches ?? []).map((match) => (
+                  <div key={match.id} className="match-item">
+                    <div>
+                      <p className="muted">{match.server}</p>
+                      <h4>{match.map}</h4>
+                    </div>
+                    <div>
+                      <p className="muted">Result</p>
+                      <strong className={match.result === 'Victory' ? 'win' : 'loss'}>{match.result}</strong>
+                    </div>
+                    <div>
+                      <p className="muted">K/D</p>
+                      <strong>{match.kd}</strong>
+                    </div>
+                    <div>
+                      <p className="muted">Damage</p>
+                      <strong>{match.damage}</strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+    </main>
+  );
+}
+
+function StatCard({ label, value, tone }: { label: string; value: string; tone: 'blue' | 'green' | 'orange' | 'purple' }) {
+  return (
+    <div className={`stat-card ${tone}`}>
+      <p>{label}</p>
+      <strong>{value}</strong>
+    </div>
+  );
 }
