@@ -1,55 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { makeSteamAuthorizationUrl } from '@/lib/steam-auth';
+import { Issuer } from 'openid-client';
+import { fetchSteamProfile, getLocalGameStats } from '@/lib/steam';
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const redirectPath = searchParams.get('redirect') || '/';
-  const { authUrl } = await makeSteamAuthorizationUrl(request, redirectPath);
-  return NextResponse.redirect(authUrl);
-}
+  const state = searchParams.get('state') || '';
+  const nonce = searchParams.get('nonce') || '';
+  const redirectParam = searchParams.get('redirect') || '/';
 
-export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => ({}}));
-  const { steamId, token } = body as { steamId?: string; token?: string };
-
-  if (!steamId || !token) {
-    return NextResponse.json({ error: 'steamId and token are required' }, { status: 400 });
+  if (!state || !nonce) {
+    return NextResponse.redirect(new URL(`${redirectParam.startsWith('/') ? redirectParam : '/'}?steam_error=invalid_callback`, APP_URL));
   }
 
-  const { prisma } = await import('@/lib/prisma');
-  const user = await prisma.user.findUnique({
-    where: { steamId },
-  });
+  try {
+    const issuer = await Issuer.discover('https://steamcommunity.com/openid');
+    const callbackUrl = new URL('/api/auth/steam/callback', APP_URL).toString();
+    const client = new issuer.Client({
+      client_id: callbackUrl,
+      redirect_uris: [callbackUrl],
+      response_types: ['id_token'],
+    });
 
-  if (!user || user.apiToken !== token) {
-    return NextResponse.json({ error: 'Invalid Steam account or API token.' }, { status: 401 });
+    const params = client.callbackParams(request.url);
+    const tokenSet = await client.callback(callbackUrl, params, {
+      state,
+      nonce,
+    });
+
+    const claimedId = tokenSet.claims.sub;
+    const steamId = claimedId?.replace('https://steamcommunity.com/openid/id/', '');
+
+    if (!steamId) {
+      throw new Error('Steam authentication returned no profile ID.');
+    }
+
+    const profile = await fetchSteamProfile(steamId);
+    if (!profile) {
+      throw new Error('Steam profile could not be loaded.');
+    }
+
+    const response = NextResponse.redirect(new URL(redirectParam.startsWith('/') ? redirectParam : '/', APP_URL));
+    response.cookies.set({
+      name: 'wardogs_session',
+      value: steamId,
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    return response;
+  } catch (error) {
+    return NextResponse.redirect(new URL(`/?steam_error=${encodeURIComponent((error as Error).message)}`, APP_URL));
   }
-
-  const session = await prisma.session.create({
-    data: {
-      sessionToken: crypto.randomUUID(),
-      userId: user.id,
-      expires: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
-    },
-  });
-
-  const response = NextResponse.json({
-    success: true,
-    steamId,
-    displayName: user.displayName,
-    apiToken: user.apiToken,
-    sessionToken: session.sessionToken,
-  });
-
-  response.cookies.set({
-    name: 'wardogs_session',
-    value: session.sessionToken,
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7,
-    path: '/',
-  });
-
-  return response;
 }
