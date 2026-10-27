@@ -1,40 +1,53 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-const demoSteamId = '76561198000000000';
+type StatsPayload = {
+  steamId?: string;
+  totals?: {
+    matches?: number;
+    wins?: number;
+    losses?: number;
+    kd?: string;
+    avgDamage?: string;
+  };
+  leaderboard?: Array<{ rank: number; player: string; server: string; kd: string; wins: number }>;
+  recentMatches?: Array<{ id: string; server: string; map: string; result: string; kd: string; damage: string }>;
+};
 
 export default function WardogsDashboard() {
-  const [steamId, setSteamId] = useState(demoSteamId);
-  const [token, setToken] = useState('demo-token-wardogs');
-  const [isLoading, setIsLoading] = useState(false);
-  const [session, setSession] = useState<{ playerName: string; steamId: string; token: string } | null>(null);
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<StatsPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
-  const authenticate = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('/api/auth/steam', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ steamId, token }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Authentication failed');
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const res = await fetch('/api/stats', { cache: 'no-store' });
+        if (!res.ok) {
+          setAuthError('Not signed in. Use Steam auth to connect your account.');
+          setStats(null);
+          return;
+        }
+        const json = await res.json();
+        setStats(json);
+      } catch (error) {
+        setAuthError('Could not load dashboard data.');
+      } finally {
+        setLoading(false);
       }
+    };
 
-      setSession({ playerName: data.playerName, steamId: data.steamId, token: data.token });
-      const statsResponse = await fetch(`/api/stats?steamId=${encodeURIComponent(steamId)}`);
-      const statsData = await statsResponse.json();
-      setStats(statsData);
-    } catch (error) {
-      console.error(error);
-      alert(error instanceof Error ? error.message : 'Unable to authenticate');
-    } finally {
-      setIsLoading(false);
-    }
+    loadStats();
+  }, []);
+
+  const startSteamLogin = () => {
+    window.location.href = '/api/auth/steam?redirect=/';
+  };
+
+  const logout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/';
   };
 
   return (
@@ -44,136 +57,128 @@ export default function WardogsDashboard() {
           <div className="brand-mark">W</div>
           <div>
             <p className="eyebrow">WARDOGS</p>
-            <h1>Combat intelligence for every community server.</h1>
+            <h1>Real-time combat intelligence for your community.</h1>
           </div>
         </div>
 
         <div className="hero-grid">
           <div className="hero-copy">
             <p>
-              Link your Steam account, authenticate with your token, and track your historical combat stats across any WARDOGS community server.
+              Connect with Steam using real OpenID authentication, store your data in a database-backed environment, and review historical results across servers.
             </p>
             <div className="cta-row">
-              <button className="primary" onClick={authenticate} disabled={isLoading}>
-                {isLoading ? 'Syncing...' : 'Link Steam account'}
+              <button className="primary" onClick={startSteamLogin}>
+                Connect Steam
               </button>
-              <button className="secondary">View demo stats</button>
+              {stats && (
+                <button className="secondary" onClick={logout}>
+                  Log out
+                </button>
+              )}
             </div>
-            <ul className="feature-list">
-              <li>Cross-server historical combat tracking</li>
-              <li>Steam-linked identity verification</li>
-              <li>Token-based authentication flow</li>
-            </ul>
+            {authError && <p className="error-text">{authError}</p>}
           </div>
 
           <div className="auth-card">
-            <label>
-              Steam ID
-              <input value={steamId} onChange={(event) => setSteamId(event.target.value)} />
-            </label>
-            <label>
-              Auth token
-              <input value={token} onChange={(event) => setToken(event.target.value)} />
-            </label>
-            <div className="service-row">
-              <span>Steam</span>
-              <span>WARDOGS Auth</span>
+            <h3>Account status</h3>
+            <div className="status-box">
+              {loading ? 'Checking session...' : stats ? 'Authenticated' : 'Waiting for Steam login'}
             </div>
+            <p className="muted">Steam account linking</p>
+            <p className="small-copy">Uses a real Steam OpenID flow plus Prisma-backed persistence.</p>
           </div>
         </div>
       </section>
 
-      <section className="stats-grid">
-        <StatCard label="Total matches" value={stats?.totals?.matches ?? '0'} tone="blue" />
-        <StatCard label="Wins" value={stats?.totals?.wins ?? '0'} tone="green" />
-        <StatCard label="KD ratio" value={stats?.totals?.kd ?? '0.00'} tone="orange" />
-        <StatCard label="Avg damage" value={stats?.totals?.avgDamage ?? '0'} tone="purple" />
-      </section>
+      {stats && (
+        <>
+          <section className="stats-grid">
+            <StatCard label="Total matches" value={String(stats.totals?.matches ?? 0)} tone="blue" />
+            <StatCard label="Wins" value={String(stats.totals?.wins ?? 0)} tone="green" />
+            <StatCard label="KD ratio" value={String(stats.totals?.kd ?? '0.00')} tone="orange" />
+            <StatCard label="Avg damage" value={String(stats.totals?.avgDamage ?? '0')} tone="purple" />
+          </section>
 
-      {session && stats && (
-        <section className="dashboard">
-          <div className="panel">
-            <div className="panel-header">
-              <h2>Player overview</h2>
-              <span className="status good">Authenticated</span>
-            </div>
-
-            <div className="profile-card">
-              <div>
-                <p className="muted">Player</p>
-                <h3>{session.playerName}</h3>
+          <section className="dashboard">
+            <div className="panel">
+              <div className="panel-header">
+                <h2>Profile</h2>
+                <span className="status good">Connected</span>
               </div>
-              <div>
-                <p className="muted">Steam ID</p>
-                <strong>{session.steamId}</strong>
-              </div>
-              <div>
-                <p className="muted">Connected token</p>
-                <strong>{session.token}</strong>
-              </div>
-            </div>
-          </div>
 
-          <div className="panel">
-            <div className="panel-header">
-              <h2>Community leaderboard</h2>
-              <span className="status">Last 30 days</span>
-            </div>
-
-            <table>
-              <thead>
-                <tr>
-                  <th>Rank</th>
-                  <th>Player</th>
-                  <th>Server</th>
-                  <th>KD</th>
-                  <th>Wins</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.leaderboard.map((entry: any) => (
-                  <tr key={entry.rank}>
-                    <td>#{entry.rank}</td>
-                    <td>{entry.player}</td>
-                    <td>{entry.server}</td>
-                    <td>{entry.kd}</td>
-                    <td>{entry.wins}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="panel wide">
-            <div className="panel-header">
-              <h2>Recent combat history</h2>
-              <span className="status">Across all servers</span>
-            </div>
-
-            <div className="match-list">
-              {stats.recentMatches.map((match: any) => (
-                <div key={match.id} className="match-item">
-                  <div>
-                    <p className="muted">{match.server}</p>
-                    <h4>{match.map}</h4>
-                  </div>
-                  <div>
-                    <p className="muted">Result</p>
-                    <strong className={match.result === 'Victory' ? 'win' : 'loss'}>{match.result}</strong>
-                  </div>
-                  <div>
-                    <p className="muted">K/D</p>
-                    <strong>{match.kd}</strong>
-                  </div>
-                  <div>
-                    <p className="muted">Damage</p>
-                    <strong>{match.damage}</strong>
-                  </div>
+              <div className="profile-card">
+                <div>
+                  <p className="muted">Steam ID</p>
+                  <strong>{stats.steamId}</strong>
                 </div>
-              ))}
+                <div>
+                  <p className="muted">Session</p>
+                  <strong>Secure cookie auth</strong>
+                </div>
+              </div>
             </div>
-          </div>
-        </section>
+
+            <div className="panel">
+              <div className="panel-header">
+                <h2>Leaderboard</h2>
+                <span className="status">Last 30 days</span>
+              </div>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Player</th>
+                    <th>Server</th>
+                    <th>KD</th>
+                    <th>Wins</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(stats.leaderboard ?? []).map((entry) => (
+                    <tr key={entry.rank}>
+                      <td>#{entry.rank}</td>
+                      <td>{entry.player}</td>
+                      <td>{entry.server}</td>
+                      <td>{entry.kd}</td>
+                      <td>{entry.wins}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="panel wide">
+              <div className="panel-header">
+                <h2>Recent combat history</h2>
+                <span className="status">Across servers</span>
+              </div>
+
+              <div className="match-list">
+                {(stats.recentMatches ?? []).map((match) => (
+                  <div key={match.id} className="match-item">
+                    <div>
+                      <p className="muted">{match.server}</p>
+                      <h4>{match.map}</h4>
+                    </div>
+                    <div>
+                      <p className="muted">Result</p>
+                      <strong className={match.result === 'Victory' ? 'win' : 'loss'}>{match.result}</strong>
+                    </div>
+                    <div>
+                      <p className="muted">K/D</p>
+                      <strong>{match.kd}</strong>
+                    </div>
+                    <div>
+                      <p className="muted">Damage</p>
+                      <strong>{match.damage}</strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        </>
       )}
     </main>
   );
